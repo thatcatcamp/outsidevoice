@@ -1,9 +1,6 @@
 import math
 import struct
-
 import matplotlib.pyplot as plt
-import numpy as np
-
 import matplotlib.animation as animation
 from matplotlib.lines import Line2D
 import pyaudio
@@ -44,7 +41,7 @@ def rms(data_in):
     for sample in shorts:
         n = sample * (1.0/32768)
         sum_squares += n*n
-    return math.sqrt( sum_squares / count )
+    return math.sqrt( sum_squares / count ) * 1000
 
 
 
@@ -53,26 +50,17 @@ class Scope:
         self.ax = ax
         self.dt = dt
         self.maxt = maxt
-        self.tdata = [0]
-        self.ydata = [0]
-        self.line = Line2D(self.tdata, self.ydata)
+        self.tdata = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+        self.ydata = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.line = Line2D(self.tdata, self.ydata, color="purple", fillstyle="full")
         self.ax.add_line(self.line)
-        self.ax.set_ylim(-.1, 1.1)
-        self.ax.set_xlim(0, self.maxt)
+        self.ax.set_ylim(0, 100)
+        self.ax.set_xlim(0, len(self.tdata))
 
     def update(self, y):
-        lastt = self.tdata[-1]
-        if lastt >= self.tdata[0] + self.maxt:  # reset the arrays
-            self.tdata = [self.tdata[-1]]
-            self.ydata = [self.ydata[-1]]
-            self.ax.set_xlim(self.tdata[0], self.tdata[0] + self.maxt)
-            self.ax.figure.canvas.draw()
-
-        # This slightly more complex calculation avoids floating-point issues
-        # from just repeatedly adding `self.dt` to the previous value.
-        t = self.tdata[0] + len(self.tdata) * self.dt
-
-        self.tdata.append(t)
+        self.ydata.pop(0)
+        print("adding y ", y)
+        print(self.ydata)
         self.ydata.append(y)
         self.line.set_data(self.tdata, self.ydata)
         return self.line,
@@ -86,16 +74,15 @@ def emitter(p=0.1):
         yield power
 
 
-
-
+plt.style.use('dark_background')
 fig, ax = plt.subplots()
+#ax.set_facecolor("black")
 scope = Scope(ax)
 
 try:
     # pass a generator in "emitter" to produce data for the update func
-    ani = animation.FuncAnimation(fig, scope.update, emitter, interval=50,
+    ani = animation.FuncAnimation(fig, scope.update, emitter, interval=1000,
                                   blit=True, save_count=100)
-
     plt.show()
 finally:
     print("closing alsa")
