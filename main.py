@@ -1,9 +1,9 @@
 import math
 import struct
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from matplotlib.lines import Line2D
+
+import numpy as np
 import pyaudio
+from matplotlib import animation as animation, pyplot as plt, cm
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -11,8 +11,9 @@ CHANNELS = 1
 DEVICE = 8
 RATE = 44100
 RECORD_SECONDS = 5
-
-
+DATA = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+print(len(DATA))
+#exit(1)
 p = pyaudio.PyAudio()
 print("----------------------record device list---------------------")
 info = p.get_host_api_info_by_index(0)
@@ -32,60 +33,58 @@ stream = p.open(format=FORMAT,
                 frames_per_buffer=CHUNK)
 
 
-
 def rms(data_in):
     count = len(data_in) / 2
-    format = "%dh"%(count)
-    shorts = struct.unpack(format, data_in)
+    format_g = "%dh" % count
+    shorts = struct.unpack(format_g, data_in)
     sum_squares = 0.0
     for sample in shorts:
-        n = sample * (1.0/32768)
-        sum_squares += n*n
-    return math.sqrt( sum_squares / count ) * 1000
-
-
-
-class Scope:
-    def __init__(self, ax, maxt=2, dt=0.02):
-        self.ax = ax
-        self.dt = dt
-        self.maxt = maxt
-        self.tdata = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
-        self.ydata = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        self.line = Line2D(self.tdata, self.ydata, color="purple", fillstyle="full")
-        self.ax.add_line(self.line)
-        self.ax.set_ylim(0, 100)
-        self.ax.set_xlim(0, len(self.tdata))
-
-    def update(self, y):
-        self.ydata.pop(0)
-        print("adding y ", y)
-        print(self.ydata)
-        self.ydata.append(y)
-        self.line.set_data(self.tdata, self.ydata)
-        return self.line,
-
-
-def emitter(p=0.1):
-    """Return a random value in [0, 1) with probability p, else 0."""
-    while True:
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        power = rms(data)
-        yield power
+        n = sample * (1.0 / 32768)
+        sum_squares += n * n
+    return math.sqrt(sum_squares / count) * 1000
 
 
 plt.style.use('dark_background')
-fig, ax = plt.subplots()
-#ax.set_facecolor("black")
-scope = Scope(ax)
 
-try:
-    # pass a generator in "emitter" to produce data for the update func
-    ani = animation.FuncAnimation(fig, scope.update, emitter, interval=1000,
-                                  blit=True, save_count=100)
-    plt.show()
-finally:
-    print("closing alsa")
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
+plt.rcParams["figure.figsize"] = [17.50, 3.50]
+plt.rcParams["figure.autolayout"] = True
+
+fig = plt.figure()
+
+data = range(20)
+colors = ['red', 'yellow', 'blue', 'green', 'black']
+bars = plt.bar(data, data, facecolor='purple', alpha=0.75)
+
+
+def amp_to_color(power):
+    power = power * 100
+    if power > 255:
+        power = 255
+    return "#%02x0d010d" % int(power)
+#    return f"#0d01{hex(int(power)).lstrip('0x').rstrip('L')}"
+
+
+def animate(frame):
+    global bars, data
+
+    index = np.random.randint(1, 7)
+    data_in = stream.read(CHUNK, exception_on_overflow=False)
+    power = rms(data_in)
+    print('powah ', power, " ", amp_to_color(power))
+    for x in data:
+        if x == 0:
+            continue
+        DATA[x - 1] = DATA[x]
+        bars[x-1].set_height(DATA[x])
+        bars[x-1].set_color(amp_to_color(DATA[x]))
+    bars[len(data)-1].set_height(power)
+    bars[len(data)-1].set_color(amp_to_color(power))
+    DATA[len(DATA)-1] = power
+
+#    data.pop(0)
+#    data.append(power)
+
+
+ani = animation.FuncAnimation(fig, animate, frames=len(data))
+
+plt.show()
