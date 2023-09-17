@@ -1,0 +1,17 @@
+contourpy==1.1.1
+cycler==0.11.0
+fonttools==4.42.1
+kiwisolver==1.4.5
+llvmlite==0.40.1
+matplotlib==3.8.0
+numba==0.57.1
+numpy==1.24.4
+opencv-python==4.8.0.76
+packaging==23.1
+Pillow==10.0.1
+PyAudio==0.2.13
+pymandel==1.0.12
+pyparsing==3.1.1
+python-dateutil==2.8.2
+six==1.16.0
+tqdm==4.66.1
