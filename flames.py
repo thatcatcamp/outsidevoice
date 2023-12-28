@@ -1,17 +1,22 @@
-import datetime
 import math
 import struct
-
 import pyaudio
 import pygame
 import os
 import random
 import time
+import logging
+
+logging.basicConfig(
+    filename="test.log",
+    level=logging.DEBUG,
+    format="%(asctime)s:%(levelname)s:%(message)s",
+)
 
 SAMPLES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 pygame.init()
 SCREEN_WIDTH = 150
-SCREEN_HEIGHT = 650
+SCREEN_HEIGHT = 350
 FIRE_SIZE = 10
 os.environ["SDL_VIDEO_WINDOW_POS"] = "%d, %d" % (150, 50)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -136,7 +141,7 @@ def rms(data_in):
         n = sample * (1.0 / 32768)
         sum_squares += n * n
     level = math.sqrt(sum_squares / count) * 9000
-    print("level ", level)
+    logging.debug("level {} ".format(level))
     return min(level, 255)
 
 
@@ -148,7 +153,7 @@ def check_events(events):
 
 def empty_queue():
     for i in SAMPLES:
-        if i > 25:
+        if i > 125:
             print("QUEUE IS NOT EMPTY")
             return False
     return True
@@ -163,7 +168,7 @@ def main_window():
     RECORD_SECONDS = 5
 
     if os.path.exists("production.txt"):
-        DEVICE = 5
+        DEVICE = 0
 
     start = time.time()
     p = pyaudio.PyAudio()
@@ -180,9 +185,15 @@ def main_window():
                 " - ",
                 p.get_device_info_by_host_api_device_index(0, i).get("name"),
             )
+            if (
+                p.get_device_info_by_host_api_device_index(0, i).get("name")
+                == "default"
+            ):
+                DEVICE = i
     print("USING ", DEVICE)
     RATE = int(p.get_device_info_by_index(DEVICE)["defaultSampleRate"])
     print(RATE)
+    # exit(1)
     print("-------------------------------------------------------------")
     stream = p.open(
         format=FORMAT,
@@ -192,18 +203,18 @@ def main_window():
         input_device_index=DEVICE,
         frames_per_buffer=CHUNK,
     )
+    last_sample = 0
     while True:
         events = pygame.event.get()
         check_events(events)
-        # sample mic
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        # pop old
-        SAMPLES.pop(0)
-        # append new level sound level
-        SAMPLES.append(rms(data))
-        if time.time() - start > 2:
+        if time.time() - last_sample > 2:
+            last_sample = time.time()
+            data = stream.read(CHUNK, exception_on_overflow=False)
+            SAMPLES.pop(0)
+            # append new level sound level
+            SAMPLES.append(rms(data))
             global MODE
-            if empty_queue() and MODE == "running":
+            if empty_queue():
                 MODE = "attract"
             else:
                 MODE = "running"
@@ -215,7 +226,7 @@ def main_window():
             clock.tick(FPS)
         else:
             draw_game_over_screen()
-            clock.tick(1)
+            clock.tick(FPS)
 
 
 main_window()
