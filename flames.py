@@ -1,11 +1,18 @@
+import hashlib
+import json
 import math
 import struct
+import subprocess
 import pyaudio
 import pygame
 import os
 import random
 import time
 import logging
+from pydub import AudioSegment
+from pydub.playback import play
+from multiprocessing import Process
+from dotenv import load_dotenv
 
 logging.basicConfig(
     filename="test.log",
@@ -13,16 +20,69 @@ logging.basicConfig(
     format="%(asctime)s:%(levelname)s:%(message)s",
 )
 
-SAMPLES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+SAMPLES = [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+]
+
+
+def get_or_default(value, default):
+    if os.getenv(value) is None:
+        return default
+    return os.getenv(value)
+
+
+load_dotenv()
 pygame.init()
 SCREEN_WIDTH = 150
 SCREEN_HEIGHT = 350
-FIRE_SIZE = 10
-os.environ["SDL_VIDEO_WINDOW_POS"] = "%d, %d" % (150, 50)
+FIRE_SIZE = 15
+os.environ["SDL_VIDEO_WINDOW_POS"] = "%d, %d" % (0, 0)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+LAST_HASH = ""
 pygame.display.set_caption("OutsideVoice")
-FPS = 30
+FPS = 20
 clock = pygame.time.Clock()
+PECKER_MODE = True
+PECKER_OVER = 0
+NOISE_FLOOR = get_or_default("NOISE_FLOOR", 110)
+CURRENT_BACKGROUND = "unknown"
 
 
 class FlameParticle:
@@ -113,16 +173,26 @@ flame = Flame()
 
 
 def draw_game_over_screen():
+    global LAST_HASH, CURRENT_BACKGROUND
+    max_in_pool = 0
+    hf = hashlib.md5()
+    hf.update(json.dumps(SAMPLES).encode("utf-8"))
+    sum = hf.hexdigest()
+    # reduce screen flicker
+    if sum == LAST_HASH:
+        return
+    LAST_HASH = sum
+    for i in range(len(SAMPLES)):
+        if SAMPLES[i] > max_in_pool:
+            max_in_pool = SAMPLES[i]
     number_samples = len(SAMPLES)
     each_height = SCREEN_HEIGHT / number_samples
-    screen.fill((0, 0, 0))
-    font = pygame.font.SysFont("arial", 40)
-    title = font.render("Game Over", True, (255, 255, 255))
-    restart_button = font.render("R - Restart", True, (255, 255, 255))
-    quit_button = font.render("Q - Quit", True, (255, 255, 255))
-    color = (0, 55, 255, 1)
+    if CURRENT_BACKGROUND != "bars":
+        screen.fill((0, 0, 0))
+        CURRENT_BACKGROUND = "bars"
     for i in range(number_samples):
-        color = (0, SAMPLES[i], 255, 1)
+        ratio = SAMPLES[i]
+        color = (ratio, 2, 2, i)
         # data is 0-255 for sample of voice (byte)
         width = SCREEN_WIDTH * (255 / SAMPLES[i])
         pygame.draw.rect(screen, color, (0, i * each_height, width, each_height))
@@ -132,7 +202,16 @@ def draw_game_over_screen():
 MODE = "running"
 
 
+def playing_audio():
+    global PECKER_MODE, PECKER_OVER
+    # this is 21 seconds long
+    PECKER_MODE = True
+    PECKER_OVER = time.time() + 21
+    subprocess.Popen(["aplay", "w.wav"])
+
+
 def rms(data_in):
+    global PECKER_MODE, PECKER_OVER
     count = len(data_in) / 2
     format = "%dh" % (count)
     shorts = struct.unpack(format, data_in)
@@ -141,8 +220,14 @@ def rms(data_in):
         n = sample * (1.0 / 32768)
         sum_squares += n * n
     level = math.sqrt(sum_squares / count) * 9000
-    logging.debug("level {} ".format(level))
-    return min(level, 255)
+    if level > 0:
+        print("rms level:", level)
+        logging.debug("level {} ".format(level))
+    if PECKER_MODE:
+        if time.time() > PECKER_OVER:
+            PECKER_MODE = False
+        return abs(math.sin(time.time())) * 255
+    return max(min(level, 255), 1)
 
 
 def check_events(events):
@@ -153,22 +238,20 @@ def check_events(events):
 
 def empty_queue():
     for i in SAMPLES:
-        if i > 125:
-            print("QUEUE IS NOT EMPTY")
+        if i > NOISE_FLOOR:
+            #            print("QUEUE IS NOT EMPTY")
             return False
     return True
 
 
 def main_window():
+    global NOISE_FLOOR, CURRENT_BACKGROUND
     CHUNK = 1024
     FORMAT = pyaudio.paInt16
     CHANNELS = 1
     DEVICE = 7
     RATE = 44100
     RECORD_SECONDS = 5
-
-    if os.path.exists("production.txt"):
-        DEVICE = 0
 
     start = time.time()
     p = pyaudio.PyAudio()
@@ -190,7 +273,14 @@ def main_window():
                 == "default"
             ):
                 DEVICE = i
+    # DEVICE = 4
+    if os.path.exists("production.txt"):
+        DEVICE = 6
+    else:
+        NOISE_FLOOR = 10
+    DEVICE = int(get_or_default("DEVICE", DEVICE))
     print("USING ", DEVICE)
+
     RATE = int(p.get_device_info_by_index(DEVICE)["defaultSampleRate"])
     print(RATE)
     # exit(1)
@@ -204,15 +294,20 @@ def main_window():
         frames_per_buffer=CHUNK,
     )
     last_sample = 0
+    #    p1 = Process(target=playing_audio, args=())
+    #    p1.start()
+    playing_audio()
     while True:
         events = pygame.event.get()
         check_events(events)
-        if time.time() - last_sample > 2:
+        if time.time() - last_sample > 1:
             last_sample = time.time()
             data = stream.read(CHUNK, exception_on_overflow=False)
+            the_sample = rms(data)
             SAMPLES.pop(0)
+            #            print("push ", the_sample)
             # append new level sound level
-            SAMPLES.append(rms(data))
+            SAMPLES.append(the_sample)
             global MODE
             if empty_queue():
                 MODE = "attract"
@@ -220,13 +315,14 @@ def main_window():
                 MODE = "running"
             start = time.time()
         if MODE == "attract":
+            CURRENT_BACKGROUND = "attract"
             screen.fill((0, 0, 0))
             flame.draw_flame()
             pygame.display.update()
             clock.tick(FPS)
         else:
             draw_game_over_screen()
-            clock.tick(FPS)
+            clock.tick(5)
 
 
 main_window()
