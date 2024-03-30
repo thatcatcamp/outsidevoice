@@ -1,8 +1,9 @@
-name: Unleash the Kittah!
+name: Outside Voice
 run-name: ${{ github.actor }} has launched a build
 on: [push]
 jobs:
     build-kitty:
+        permissions: write-all
         runs-on: ubuntu-latest
         steps:
             - name: Check out repository code
