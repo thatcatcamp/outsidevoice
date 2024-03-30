@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import hashlib
 import json
 import math
@@ -9,10 +10,24 @@ import os
 import random
 import time
 import logging
-from pydub import AudioSegment
-from pydub.playback import play
-from multiprocessing import Process
 from dotenv import load_dotenv
+
+butt_image = pygame.image.load("butt.jpg")
+mbutt_image = pygame.image.load("mbutts.jpg")
+cat_image = pygame.image.load("cat.jpg")
+sheep_image = pygame.image.load("sheep.jpg")
+obey_image = pygame.image.load("obey.jpg")
+rick_image = pygame.image.load("rick.jpg")
+bacon_image = pygame.image.load("bacon.jpg")
+screen = None
+
+
+def fight_club(x, y):
+    screen.blit(
+        random.choice([bacon_image, rick_image, cat_image, obey_image, mbutt_image]),
+        (x, y),
+    )
+
 
 logging.basicConfig(
     filename="test.log",
@@ -59,6 +74,13 @@ SAMPLES = [
     35,
     36,
     37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
 ]
 
 
@@ -70,19 +92,33 @@ def get_or_default(value, default):
 
 load_dotenv()
 pygame.init()
-SCREEN_WIDTH = 150
+SCREEN_WIDTH = 75
 SCREEN_HEIGHT = 350
 FIRE_SIZE = 15
 os.environ["SDL_VIDEO_WINDOW_POS"] = "%d, %d" % (0, 0)
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
 LAST_HASH = ""
 pygame.display.set_caption("OutsideVoice")
 FPS = 20
 clock = pygame.time.Clock()
 PECKER_MODE = True
 PECKER_OVER = 0
-NOISE_FLOOR = get_or_default("NOISE_FLOOR", 110)
+NOISE_FLOOR = int(get_or_default("NOISE_FLOOR", 110))
 CURRENT_BACKGROUND = "unknown"
+
+
+def drift_one(ratio):
+    # print(ratio, NOISE_FLOOR)
+    if ratio < NOISE_FLOOR:
+        return 2
+    return int(abs(math.sin(time.time() / 22)) * 255)
+
+
+def drift_two(ratio):
+    # print(ratio, NOISE_FLOOR)
+    if ratio < NOISE_FLOOR:
+        return 2
+    return int(abs(math.sin(time.time() / 45)) * 255)
 
 
 class FlameParticle:
@@ -172,13 +208,13 @@ class Flame:
 flame = Flame()
 
 
-def draw_game_over_screen():
+def draw_scale():
     global LAST_HASH, CURRENT_BACKGROUND
     max_in_pool = 0
     hf = hashlib.md5()
     hf.update(json.dumps(SAMPLES).encode("utf-8"))
     sum = hf.hexdigest()
-    # reduce screen flicker
+    # reduce screen flicker and lag, don't repaint until things change
     if sum == LAST_HASH:
         return
     LAST_HASH = sum
@@ -190,9 +226,11 @@ def draw_game_over_screen():
     if CURRENT_BACKGROUND != "bars":
         screen.fill((0, 0, 0))
         CURRENT_BACKGROUND = "bars"
+        screen.blit(butt_image, (200, SCREEN_WIDTH))
+
     for i in range(number_samples):
         ratio = SAMPLES[i]
-        color = (ratio, 2, 2, i)
+        color = (ratio, drift_one(ratio), drift_two(ratio), i)
         # data is 0-255 for sample of voice (byte)
         width = SCREEN_WIDTH * (255 / SAMPLES[i])
         pygame.draw.rect(screen, color, (0, i * each_height, width, each_height))
@@ -279,7 +317,9 @@ def main_window():
     else:
         NOISE_FLOOR = 10
     DEVICE = int(get_or_default("DEVICE", DEVICE))
-    print("USING ", DEVICE)
+    NOISE_FLOOR = int(get_or_default("NOISE_FLOOR", NOISE_FLOOR))
+    print("DEVICE ", DEVICE)
+    print("NOISE_FLOOR ", NOISE_FLOOR)
 
     RATE = int(p.get_device_info_by_index(DEVICE)["defaultSampleRate"])
     print(RATE)
@@ -294,6 +334,9 @@ def main_window():
         frames_per_buffer=CHUNK,
     )
     last_sample = 0
+    never = 0xFFFFFFFF
+    in_attract_mode_since = never
+    rotate_attract = 60
     #    p1 = Process(target=playing_audio, args=())
     #    p1.start()
     playing_audio()
@@ -311,17 +354,32 @@ def main_window():
             global MODE
             if empty_queue():
                 MODE = "attract"
+                if in_attract_mode_since == never:
+                    in_attract_mode_since = time.time()
             else:
                 MODE = "running"
+                in_attract_mode_since = never
             start = time.time()
         if MODE == "attract":
             CURRENT_BACKGROUND = "attract"
-            screen.fill((0, 0, 0))
+            if in_attract_mode_since == never:
+                screen.fill((random.randint(2, 255), 2, 2))
+                fight_club(0, 1)
+                print("clearing background")
+                in_attract_mode_since = time.time()
+            if (
+                in_attract_mode_since != never
+                and time.time() - in_attract_mode_since > rotate_attract
+            ):
+                screen.fill((random.randint(2, 255), 2, 2))
+                fight_club(0, 1)
+                in_attract_mode_since = time.time()
+                print("rotating background")
             flame.draw_flame()
             pygame.display.update()
             clock.tick(FPS)
         else:
-            draw_game_over_screen()
+            draw_scale()
             clock.tick(5)
 
 
