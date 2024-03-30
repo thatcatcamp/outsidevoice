@@ -1,0 +1,24 @@
+name: Unleash the Kittah!
+run-name: ${{ github.actor }} has launched a build
+on: [push]
+jobs:
+    build-kitty:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out repository code
+              uses: actions/checkout@v4
+            - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+            - name: Setup Go
+              uses: actions/setup-go@v4
+              with:
+                go-version: 1.21.x
+            - name: Create Release
+              id: create_release
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: 1.0+${{github.run_number}}
+                  release_name: Release 1.0+${{github.run_number}}
+                  draft: false
+                  prerelease: false
