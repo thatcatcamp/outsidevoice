@@ -1,30 +1,108 @@
 #!/usr/bin/python3
-import hashlib
 import json
 import math
 import struct
 import subprocess
 import pyaudio
+import paho.mqtt.client as mqtt
 import pygame
 import os
 import random
 import time
 import logging
+import socket
 from dotenv import load_dotenv
+from PIL import Image, ImageOps
+from PIL import ImageFont
+from PIL import ImageDraw
 
 butt_image = pygame.image.load("butt.jpg")
 mbutt_image = pygame.image.load("mbutts.jpg")
 cat_image = pygame.image.load("cat.jpg")
 sheep_image = pygame.image.load("sheep.jpg")
-obey_image = pygame.image.load("obey.jpg")
 rick_image = pygame.image.load("rick.jpg")
 bacon_image = pygame.image.load("bacon.jpg")
 screen = None
+SLOGANS = [
+    "MOAR BOOBS",
+    "OBEY CAT",
+    "MOAR BOOKS",
+    " EAT TOFU ",
+    "ROBOT HEART IS FOR ROBOTS",
+    "STINKY HOOMANS",
+    "CLIPPY HAS THE ANSWERS",
+]
+ADS = {}
+# Set the path for the Unix socket
+socket_path = "/tmp/voice.socket"
+# remove the socket file if it already exists
+try:
+    os.unlink(socket_path)
+except OSError:
+    if os.path.exists(socket_path):
+        raise
+
+
+def on_subscribe(client, userdata, mid, reason_code_list, properties):
+    # Since we subscribed only for a single channel, reason_code_list contains
+    # a single entry
+    if reason_code_list[0].is_failure:
+        print(f"Broker rejected you subscription: {reason_code_list[0]}")
+    else:
+        print(f"Broker granted the following QoS: {reason_code_list[0].value}")
+
+
+def on_unsubscribe(client, userdata, mid, reason_code_list, properties):
+    # Be careful, the reason_code_list is only present in MQTTv5.
+    # In MQTTv3 it will always be empty
+    print("on_unsubscribe")
+    if len(reason_code_list) == 0 or not reason_code_list[0].is_failure:
+        print("unsubscribe succeeded (if SUBACK is received in MQTTv3 it success)")
+    else:
+        print(f"Broker replied with failure: {reason_code_list[0]}")
+    client.disconnect()
+
+
+def on_message(client, userdata, message):
+    # userdata is the structure we choose to provide, here it's a list()
+    print(message.payload)
+    try:
+        exploded = json.loads(message.payload)
+
+    except Exception as e:
+        print(e)
+
+
+def on_connect(client, userdata, flags, reason_code, properties):
+    if reason_code.is_failure:
+        print(f"Failed to connect: {reason_code}. loop_forever() will retry connection")
+    else:
+        # we should always subscribe from on_connect callback to be sure
+        # our subscribed is persisted across reconnections.
+        client.subscribe("eventq")
+
+
+def generate_images():
+    for s in SLOGANS:
+        print("generate image for", s)
+        img = Image.open("blank.jpg")
+        fs = round(10 / (len(s)) * 36, 0)
+
+        print(fs)
+        font = ImageFont.truetype("spacemono.ttf", int(fs))
+        txt = Image.new("L", (250, 71))
+        d = ImageDraw.Draw(txt)
+        d.text((10, 10), s, font=font, fill=255)
+        w = txt.rotate(90, expand=True)
+        img.paste(w)
+        img.save("out.jpg")
+        ADS[s] = pygame.image.load("out.jpg")
 
 
 def fight_club(x, y):
+    print("ads -> ", len(ADS))
     screen.blit(
-        random.choice([bacon_image, rick_image, cat_image, obey_image, mbutt_image]),
+        ADS[random.choice(SLOGANS)],
         (x, y),
     )
 
@@ -90,6 +168,14 @@ def get_or_default(value, default):
     return os.getenv(value)
 
 
+mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+mqttc.on_connect = on_connect
+mqttc.on_message = on_message
+mqttc.on_subscribe = on_subscribe
+mqttc.on_unsubscribe = on_unsubscribe
+
+mqttc.user_data_set([])
+mqttc.connect("localhost")
 load_dotenv()
 pygame.init()
 SCREEN_WIDTH = 75
@@ -208,36 +294,7 @@ class Flame:
 flame = Flame()
 
 
-def draw_scale():
-    global LAST_HASH, CURRENT_BACKGROUND
-    max_in_pool = 0
-    hf = hashlib.md5()
-    hf.update(json.dumps(SAMPLES).encode("utf-8"))
-    sum = hf.hexdigest()
-    # reduce screen flicker and lag, don't repaint until things change
-    if sum == LAST_HASH:
-        return
-    LAST_HASH = sum
-    for i in range(len(SAMPLES)):
-        if SAMPLES[i] > max_in_pool:
-            max_in_pool = SAMPLES[i]
-    number_samples = len(SAMPLES)
-    each_height = SCREEN_HEIGHT / number_samples
-    if CURRENT_BACKGROUND != "bars":
-        screen.fill((0, 0, 0))
-        CURRENT_BACKGROUND = "bars"
-        screen.blit(butt_image, (200, SCREEN_WIDTH))
-
-    for i in range(number_samples):
-        ratio = SAMPLES[i]
-        color = (ratio, drift_one(ratio), drift_two(ratio), i)
-        # data is 0-255 for sample of voice (byte)
-        width = SCREEN_WIDTH * (255 / SAMPLES[i])
-        pygame.draw.rect(screen, color, (0, i * each_height, width, each_height))
-        pygame.display.update()
-
-
-MODE = "running"
+MODE = "attact"
 
 
 def playing_audio():
@@ -284,83 +341,28 @@ def empty_queue():
 
 def main_window():
     global NOISE_FLOOR, CURRENT_BACKGROUND
-    CHUNK = 1024
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    DEVICE = 7
-    RATE = 44100
-    RECORD_SECONDS = 5
-
-    start = time.time()
-    p = pyaudio.PyAudio()
-    print("----------------------record device list---------------------")
-    info = p.get_host_api_info_by_index(0)
-    numdevices = info.get("deviceCount")
-    for i in range(0, numdevices):
-        if (
-            p.get_device_info_by_host_api_device_index(0, i).get("maxInputChannels")
-        ) > 0:
-            print(
-                "Input Device id ",
-                i,
-                " - ",
-                p.get_device_info_by_host_api_device_index(0, i).get("name"),
-            )
-            if (
-                p.get_device_info_by_host_api_device_index(0, i).get("name")
-                == "default"
-            ):
-                DEVICE = i
-    # DEVICE = 4
-    if os.path.exists("production.txt"):
-        DEVICE = 6
-    else:
-        NOISE_FLOOR = 10
-    DEVICE = int(get_or_default("DEVICE", DEVICE))
-    NOISE_FLOOR = int(get_or_default("NOISE_FLOOR", NOISE_FLOOR))
-    print("DEVICE ", DEVICE)
-    print("NOISE_FLOOR ", NOISE_FLOOR)
-
-    RATE = int(p.get_device_info_by_index(DEVICE)["defaultSampleRate"])
-    print(RATE)
-    # exit(1)
-    print("-------------------------------------------------------------")
-    stream = p.open(
-        format=FORMAT,
-        channels=CHANNELS,
-        rate=RATE,
-        input=True,
-        input_device_index=DEVICE,
-        frames_per_buffer=CHUNK,
-    )
-    last_sample = 0
+    rotate_attract = 60
     never = 0xFFFFFFFF
     in_attract_mode_since = never
-    rotate_attract = 60
     #    p1 = Process(target=playing_audio, args=())
     #    p1.start()
-    playing_audio()
+    # playing_audio()
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(socket_path)
+    server.setblocking(False)
+    server.listen(1)
     while True:
         events = pygame.event.get()
+        mqttc.loop(timeout=0)
+        try:
+            c, a = server.accept()
+            print("Connection from", c)
+            the_data = c.recv(1024)
+            print("msg ", the_data)
+        except BlockingIOError:
+            pass
         check_events(events)
-        if time.time() - last_sample > 1:
-            last_sample = time.time()
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            the_sample = rms(data)
-            SAMPLES.pop(0)
-            #            print("push ", the_sample)
-            # append new level sound level
-            SAMPLES.append(the_sample)
-            global MODE
-            if empty_queue():
-                MODE = "attract"
-                if in_attract_mode_since == never:
-                    in_attract_mode_since = time.time()
-            else:
-                MODE = "running"
-                in_attract_mode_since = never
-            start = time.time()
-        if MODE == "attract":
+        if True:
             CURRENT_BACKGROUND = "attract"
             if in_attract_mode_since == never:
                 screen.fill((random.randint(2, 255), 2, 2))
@@ -379,8 +381,8 @@ def main_window():
             pygame.display.update()
             clock.tick(FPS)
         else:
-            draw_scale()
             clock.tick(5)
 
 
+generate_images()
 main_window()
