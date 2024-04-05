@@ -3,7 +3,6 @@ import json
 import math
 import struct
 import subprocess
-import pyaudio
 import paho.mqtt.client as mqtt
 import pygame
 import os
@@ -16,12 +15,6 @@ from PIL import Image, ImageOps
 from PIL import ImageFont
 from PIL import ImageDraw
 
-butt_image = pygame.image.load("butt.jpg")
-mbutt_image = pygame.image.load("mbutts.jpg")
-cat_image = pygame.image.load("cat.jpg")
-sheep_image = pygame.image.load("sheep.jpg")
-rick_image = pygame.image.load("rick.jpg")
-bacon_image = pygame.image.load("bacon.jpg")
 screen = None
 SLOGANS = [
     "MOAR BOOBS",
@@ -33,14 +26,6 @@ SLOGANS = [
     "CLIPPY HAS THE ANSWERS",
 ]
 ADS = {}
-# Set the path for the Unix socket
-socket_path = "/tmp/voice.socket"
-# remove the socket file if it already exists
-try:
-    os.unlink(socket_path)
-except OSError:
-    if os.path.exists(socket_path):
-        raise
 
 
 def on_subscribe(client, userdata, mid, reason_code_list, properties):
@@ -344,23 +329,9 @@ def main_window():
     rotate_attract = 60
     never = 0xFFFFFFFF
     in_attract_mode_since = never
-    #    p1 = Process(target=playing_audio, args=())
-    #    p1.start()
-    # playing_audio()
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(socket_path)
-    server.setblocking(False)
-    server.listen(1)
     while True:
         events = pygame.event.get()
         mqttc.loop(timeout=0)
-        try:
-            c, a = server.accept()
-            print("Connection from", c)
-            the_data = c.recv(1024)
-            print("msg ", the_data)
-        except BlockingIOError:
-            pass
         check_events(events)
         if True:
             CURRENT_BACKGROUND = "attract"
