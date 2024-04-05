@@ -29,6 +29,9 @@ pip install -r requirements.txt
 
 It does use X11/Wayland - so you will need to have a display available. If you are running on a headless server, you can use Xvfb:
 
+We keep all versions and iterations.  The current go-forward version is `billboard.py`.
+
+
 # Contributing
 
 We are looking for help with the following:
