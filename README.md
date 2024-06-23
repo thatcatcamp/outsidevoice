@@ -39,3 +39,9 @@ We are looking for help with the following:
     - using the information from the radar to make the display more interesting
     - using the speech recognition to customize the display according to what is being said in a creepy way
 
+# Prompts
+
+```angular2html
+can you generate a png file that is 350 by 75 pixels that looks like a fake banner ad  for "denardo's acres of books"?
+an you generate a png file that is 350 by 75 pixels that looks like a fake sign for a roadside store with free dust?
+```
