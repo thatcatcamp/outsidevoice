@@ -12,6 +12,12 @@ from loguru import logger
 from dotenv import load_dotenv
 from PIL import ImageFont
 from fuzzywuzzy import process
+import nltk
+
+import eliza
+
+nltk.download("punkt")
+nltk.download("averaged_perceptron_tagger")
 
 POWER_SAVE_FILE = "/tmp/powersave.flg"
 ATTRACT = [
@@ -126,11 +132,30 @@ ROTATE_MIN = 6
 text_height = 3
 text_width = 3
 
+import nltk
+from nltk.corpus import wordnet
+
+
+def strip_non_nouns(text):
+    # Tokenize the text
+    tokens = nltk.word_tokenize(text)
+
+    # Get the part of speech for each token
+    pos_tags = nltk.pos_tag(tokens)
+
+    # Keep only the nouns
+    nouns = [word for word, pos in pos_tags if pos in ["NN", "NNS", "NNP", "NNPS"]]
+
+    # Join the nouns back into a string
+    return " ".join(nouns)
+
 
 def fuzzy_search(query: str):
     if len(query) < 10:
         return None
-    result = process.extractOne(query.lower(), SLOGANS)
+    query = strip_non_nouns(query)
+    print("stripped is ", query)
+    result = process.extractOne(strip_non_nouns(query.lower()), SLOGANS)
     logger.info(f"best match for {query} is {result}")
     if result[1] >= 60:  # You can adjust this threshold according to your needs
         return result[0]
@@ -353,9 +378,9 @@ def main_window():
             # people are around
             logger.info("people are around")
             logger.info(f"last event was {SPY_TEXT}")
-            matched_slogan = fuzzy_search(SPY_TEXT)
+            matched_slogan = eliza.best_answer(SPY_TEXT)
             print("best match is ", matched_slogan)
-            if matched_slogan is not None:
+            if matched_slogan is not None and matched_slogan != "":
                 r = random.randint(0, 255)
                 g = random.randint(0, 255)
                 b = random.randint(0, 255)
